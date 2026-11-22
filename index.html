@@ -1150,6 +1150,14 @@ button:disabled {
 #defibEnergy { width: auto; }
 #defibShock:enabled { background: #a73d22; color: white; }
 #defibControls button:disabled { opacity: .5; }
+#defibControls select, #therapyMode, #pacerControls select, #pacerControls input,
+#therapyScenarioSettings input { width: auto; }
+#pacerControls:not([hidden]), #therapyScenarioSettings {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px;
+}
+#pacerControls input, #therapyScenarioSettings input[type="number"] { max-width: 6rem; }
+#pacerControls button, #pacerControls input, #pacerControls select, #therapyMode { min-height: 44px; }
+#defibShock, #defibShock * { touch-action: none; }
 #defibStatus { margin: 8px 0 0; color: #ffd269; }
     </style></head
   ><body class="setup-mode student-view">
@@ -1253,16 +1261,23 @@ button:disabled {
       ><button id="silenceAlarms">Silence Alarms</button></header
     >
     <aside style="padding: 10px 16px; background: #18323e"
-      ><strong>Direct v6 · Sweep + Defib</strong> · <span id="directRoleName">Choose role</span> ·
+      ><strong>Direct v6 · Sync / Pacer / AED</strong> · <span id="directRoleName">Choose role</span> ·
       <span id="directStatus" role="status">Direct browser pairing · experimental</span><br /><small
         id="offlineReady"
         >Checking offline copy…</small
       ></aside
     ><main
       ><details id="defibPanel">
-        <summary>Manual Defib · Simulation</summary>
+        <summary>Defib / Pacer · Simulation</summary>
+        <label for="therapyMode">Mode</label>
+        <select id="therapyMode">
+          <option value="manual">Manual Defib</option>
+          <option value="sync">Sync Cardioversion</option>
+          <option value="pacer">Pacer</option>
+          <option value="aed">AED · Automatic Shock</option>
+        </select>
         <div id="defibControls">
-          <label for="defibEnergy">Energy (J)</label>
+          <label for="defibEnergy" id="defibEnergyLabel">Energy (J)</label>
           <select id="defibEnergy">
             <option>1</option><option>2</option><option>3</option><option>4</option>
             <option>5</option><option>6</option><option>7</option><option>8</option>
@@ -1271,8 +1286,20 @@ button:disabled {
             <option>100</option><option>120</option><option>150</option><option>200</option>
           </select>
           <button type="button" id="defibCharge" disabled>Charge</button>
+          <button type="button" id="aedAnalyze" hidden disabled>Analyze</button>
           <button type="button" id="defibDisarm" disabled>Disarm</button>
           <button type="button" id="defibShock" disabled>Shock</button>
+        </div>
+        <div id="pacerControls" hidden>
+          <label for="pacerMode">Pacing mode</label>
+          <select id="pacerMode"><option>Demand</option><option>Fixed</option></select>
+          <label for="pacerRate">Rate (bpm)</label>
+          <input id="pacerRate" type="number" min="30" max="180" step="1" inputmode="numeric" value="70" required>
+          <label for="pacerOutput">Output (mA)</label>
+          <input id="pacerOutput" type="number" min="0" max="140" step="1" inputmode="numeric" value="0" required>
+          <button type="button" id="pacerOutputDown" aria-label="Decrease pacing output by 5 milliamps">−5 mA</button>
+          <button type="button" id="pacerOutputUp" aria-label="Increase pacing output by 10 milliamps">+10 mA</button>
+          <button type="button" id="pacerStart" disabled>Start pacing</button>
         </div>
         <p id="defibStatus" role="status">Start or resume the scenario to use defib controls.</p>
       </details><div class="status"
@@ -1299,7 +1326,7 @@ button:disabled {
         ><div class="tile" id="alarmBP"
           ><span>NIBP · mmHg</span><b id="bpOut"></b><span id="mapOut"></span
           ><div class="nibp-controls"
-            ><button id="nibpMeasure">NIBP</button><button id="nibpMode">Manual</button
+            ><button id="nibpMeasure">NIBP</button><button id="nibpMode">Manual/Auto</button
             ><span id="nibpCountdown" aria-label="Time until next blood pressure"></span></div
           ><span id="nibpStatus" role="status">Press NIBP to obtain a reading</span
           ><div
@@ -1326,7 +1353,12 @@ button:disabled {
           ><button id="scenarioPause" disabled>Pause</button
           ><button id="newScenario">New scenario</button
           ><span>Scenario time <strong id="scenarioTimer">00:00:00</strong></span></div
-        ><div class="compact-table-scroll"
+        ><div id="therapyScenarioSettings">
+          <label><input id="vtPulseless" type="checkbox"> VT is pulseless (AED)</label>
+          <label for="captureThreshold">Pacing capture threshold (mA)</label>
+          <input id="captureThreshold" type="number" min="1" max="140" step="1" value="60" required>
+        </div>
+        <div class="compact-table-scroll"
           ><table class="vitals-table"
             ><thead
               ><tr
@@ -3275,6 +3307,7 @@ getElement('silenceAlarms').onclick = () => {
 function getActiveAlerts() {
   const values = {
       ...patientState,
+      hr: displayedECGRate(),
       map: (patientState.sbp + 2 * patientState.dbp) / 3,
       etco2: effectiveCO2(),
     },
@@ -3287,15 +3320,14 @@ function getActiveAlerts() {
       values.dbp = nibp.reading.dbp;
       values.map = (values.sbp + 2 * values.dbp) / 3;
     }
-    if (id === 'hr' && ['None', 'Asystole', 'VFib', 'Fine VFib'].includes(patientState.rhythm))
-      continue;
+    if (id === 'hr' && values.hr === null) continue;
     if (id === 'etco2' && ['None', 'Loss of waveform / disconnection'].includes(patientState.cap))
       continue;
     if (values[id] < v.low) out.push(v.label + ' LOW');
     else if (values[id] > v.high) out.push(v.label + ' HIGH');
   }
   if (patientState.rr === 0 || patientState.cap === 'Apnea') out.push('APNEA');
-  if (['Asystole', 'VFib', 'Fine VFib'].includes(patientState.rhythm)) out.push('RHYTHM ALARM');
+  if (values.hr === null && patientState.rhythm !== 'None') out.push('RHYTHM ALARM');
   return out;
 }
 // NIBP is sampled and held separately from the instructor's continuous values.
@@ -3365,18 +3397,24 @@ function renderNIBP() {
   getElement('cuffFill').style.width = fill * 100 + '%';
   getElement('cuffTrack').setAttribute('aria-valuenow', String(Math.round(fill * 100)));
   getElement('nibpMeasure').disabled = busy;
-  getElement('nibpMode').textContent = nibp.autoMinutes ? 'Auto' : 'Manual';
+  getElement('nibpMode').setAttribute('aria-label', 'Manual/Auto · ' + (nibp.autoMinutes ? 'Auto active' : 'Manual active'));
   getElement('nibpStatus').textContent = busy
     ? (age < 4 ? 'Cuff inflating' : 'Cuff deflating') + (paused ? ' · scenario paused' : '')
-    : r
-      ? 'Last reading ' + formatScenarioTime(r.time)
-      : 'Press NIBP to obtain a reading';
+    : (nibp.autoMinutes ? 'Auto ' + nibp.autoMinutes + ' min' : 'Manual') +
+      (r ? ' · Last reading ' + formatScenarioTime(r.time) : ' · Press NIBP to obtain a reading');
   const remaining = nibp.next === null ? 0 : Math.max(0, Math.ceil(nibp.next - scenarioSeconds));
   getElement('nibpCountdown').textContent = nibp.autoMinutes
     ? busy
       ? 'Measuring'
       : Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0')
     : '';
+}
+
+function displayedECGRate() {
+  if (pacing.running && pacing.lastCapture > scenarioSeconds - 60 / pacing.rate - 0.1 &&
+      pacing.lastCapture > pacing.lastSensed) return pacing.rate;
+  if (['None', 'Asystole', 'VFib', 'Fine VFib'].includes(patientState.rhythm)) return null;
+  return Math.round(patientState.hr);
 }
 
 function renderPatientReadings() {
@@ -3386,9 +3424,8 @@ function renderPatientReadings() {
     String(Math.floor(scenarioSeconds / 60) % 60).padStart(2, '0') +
     ':' +
     String(Math.floor(scenarioSeconds) % 60).padStart(2, '0');
-  const c = patientState,
-    noRate = ['None', 'Asystole', 'VFib', 'Fine VFib'].includes(c.rhythm);
-  getElement('hrOut').textContent = noRate ? '—' : Math.round(c.hr);
+  const c = patientState;
+  getElement('hrOut').textContent = displayedECGRate() ?? '—';
   getElement('co2Out').textContent = ['None', 'Loss of waveform / disconnection'].includes(c.cap)
     ? '—'
     : Math.round(effectiveCO2());
@@ -3419,6 +3456,15 @@ function renderPatientReadings() {
 const gauss = (p, m, w, a) => a * Math.exp(-0.5 * ((p - m) / w) ** 2);
 // Time-domain beat scheduling keeps QRS widths independent of screen frame rate.
 // Time-domain beat scheduling keeps QRS widths independent of screen frame rate.
+const pacing = {
+  running: false, mode: 'Demand', rate: 70, output: 0, next: Infinity,
+  lastCapture: -Infinity, lastSensed: -Infinity, capture: null,
+};
+const pacingPulses = [];
+const syncMarks = [];
+let pacingThreshold = 60;
+let pulselessVT = false;
+
 const ecgModel = {
   rhythm: null,
   next: 0,
@@ -3797,6 +3843,24 @@ function drawWaveform(id, color, seconds) {
     previousX = x;
   }
   ctx.stroke();
+  if (id === 'ecg') {
+    const visible = (time) => time <= newest && newest - time <= seconds - gapSeconds;
+    const xFor = (time) => left + (time % seconds) / seconds * plotWidth;
+    ctx.font = 'bold 12px system-ui';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff2ae';
+    for (const time of syncMarks) {
+      if (visible(time)) ctx.fillText('S', xFor(time), 12);
+    }
+    ctx.strokeStyle = '#e4f4ff';
+    ctx.beginPath();
+    for (const {time} of pacingPulses) {
+      if (!visible(time)) continue;
+      ctx.moveTo(xFor(time), yFor(0));
+      ctx.lineTo(xFor(time), Math.max(16, yFor(1.35)));
+    }
+    ctx.stroke();
+  }
   ctx.restore();
   if (patientState[id === 'ecg' ? 'rhythm' : 'cap'] === 'None') {
     ctx.fillStyle = '#9aabb9';
@@ -3910,12 +3974,16 @@ function advanceSimulationTime(dt) {
 var directFrameAt = 0;
 
 function directResumeClock() {
-  if (document.visibilityState === 'hidden') return;
+  if (document.visibilityState === 'hidden') {
+    cancelShock();
+    return;
+  }
   const now = performance.now();
   if (directFrameAt && scenarioStarted && !paused) {
     const gap = Math.max(0, (now - directFrameAt) / 1000);
     advanceSimulationTime(gap);
     if (gap > 1) {
+      if (pacing.running) pacing.next = scenarioSeconds + 60 / pacing.rate;
       histories.ecg.length = 0;
       histories.co2.length = 0;
       resetECG();
@@ -3950,7 +4018,7 @@ function appendSignalSamples(from, to, fromE, fromC) {
     respiratoryPhase = fromC + (savedC - fromC) * f;
     scenarioSeconds = next;
     const blend = Math.max(0, 1 - (next - join.start) / 0.18);
-    histories.ecg.push([next, ecgValue(cardiacPhase % 1, next) + join.ecg * blend]);
+    histories.ecg.push([next, ecgValue(cardiacPhase % 1, next) * pacingIntrinsicScale(next) + pacedComplex(next) + join.ecg * blend]);
     const lastC = histories.co2.length ? histories.co2[histories.co2.length - 1][0] : -Infinity;
     if (next - lastC >= 0.0079)
       histories.co2.push([next, capnographyValue(respiratoryPhase % 1) + join.co2 * blend]);
@@ -3979,17 +4047,15 @@ function animateMonitor(ms) {
       fromC = respiratoryPhase;
     advanceSimulationTime(dt);
     if (dt > 0.5) {
+      cancelShock();
+      if (pacing.running) pacing.next = scenarioSeconds + 60 / pacing.rate;
       resetECG();
       histories.ecg.length = 0;
       histories.co2.length = 0;
     }
     advanceECG();
-    if (
-      ecgModel.beats.some(
-        (b) => rPeakTime(b) > scenarioSeconds - dt && rPeakTime(b) <= scenarioSeconds,
-      ) &&
-      scenarioSeconds - lastTone > 0.12
-    ) {
+    const heardBeat = advanceTherapy(from, scenarioSeconds, ms);
+    if (heardBeat && scenarioSeconds - lastTone > 0.12) {
       playHeartbeat();
       lastTone = scenarioSeconds;
     }
@@ -5029,8 +5095,10 @@ function updateRunButtons() {
 function toggleScenarioPause() {
   if (!['running', 'paused'].includes(scenarioRunState)) return;
   paused = !paused;
-  if (paused) stopSounds();
-  else ensureAudio();
+  if (paused) {
+    resetTherapy();
+    stopSounds();
+  } else ensureAudio();
   scenarioRunState = paused ? 'paused' : 'running';
   updateRunButtons();
   recordEvent(
@@ -5043,6 +5111,7 @@ getElement('restartScenario').onclick = () => {
   ensureAudio();
   if (['running', 'paused'].includes(scenarioRunState)) {
     paused = true;
+    resetTherapy();
     stopSounds();
     scenarioRunState = 'stopped';
     recordEvent('Scenario stopped');
@@ -5062,6 +5131,15 @@ getElement('restartScenario').onclick = () => {
 };
 
 function clearScenarioData() {
+  resetTherapy();
+  therapyMode.value = 'manual';
+  pacingThreshold = 60;
+  pulselessVT = false;
+  getElement('captureThreshold').value = 60;
+  getElement('vtPulseless').checked = false;
+  syncMarks.length = 0;
+  pacingPulses.length = 0;
+  updateDefibControls();
   Object.assign(nibp, {
     reading: null,
     start: null,
@@ -6007,6 +6085,8 @@ function directSnapshot() {
   return {
     epoch: directSession,
     defibSession: sessionInfo.startedAt || null,
+    pacingThreshold,
+    pulselessVT,
     seq: ++directSeq,
     ready: !!instructorPin,
     current: {
@@ -6089,10 +6169,12 @@ function directReceive(message) {
     }
     return;
   }
-  if (directRole === 'instructor' && message.type === 'trainingShock') {
-    if (scenarioStarted && !paused && message.epoch === directSession && message.session === sessionInfo.startedAt &&
-        defibEnergies.has(message.energy)) {
-      recordEvent('Simulated manual shock · ' + message.energy + ' J');
+  if (directRole === 'instructor' && ['trainingShock', 'trainingPace'].includes(message.type)) {
+    if (scenarioStarted && !paused && message.epoch === directSession && message.session === sessionInfo.startedAt) {
+      const event = message.type === 'trainingShock'
+        ? shockEventText(message.mode ?? 'manual', message.energy)
+        : paceEventText(message);
+      if (event) recordEvent(event);
     }
     return;
   }
@@ -6112,7 +6194,14 @@ function directReceive(message) {
     histories.co2.length = 0;
     resetECG();
   }
+  if (remoteDefibSession !== (state.defibSession || null) || directEpoch !== state.epoch) {
+    resetTherapy();
+    syncMarks.length = 0;
+    pacingPulses.length = 0;
+  }
   remoteDefibSession = state.defibSession || null;
+  pacingThreshold = Number.isFinite(state.pacingThreshold) ? state.pacingThreshold : 60;
+  pulselessVT = state.pulselessVT === true;
   directEpoch = state.epoch;
   directLastSeq = state.seq;
   if (!state.ready) {
@@ -6144,6 +6233,7 @@ function directReceive(message) {
   alarmsSilencedUntil = state.silenceRemaining ? Date.now() + state.silenceRemaining : 0;
   scenarioStarted = state.scenarioStarted;
   scenarioRunState = state.scenarioRunState;
+  if (paused) resetTherapy();
   directStatus(paused ? 'Connected · scenario paused' : 'Connected · receiving patient readings');
 }
 
@@ -6268,78 +6358,343 @@ function chooseDirectRole(role) {
   );
   getElement('directPairing').showModal();
 }
+const therapyMode = getElement('therapyMode');
 const defibEnergy = getElement('defibEnergy');
 const defibEnergies = new Set(Array.from(defibEnergy.options, (option) => Number(option.value)));
 const defibCharge = getElement('defibCharge');
 const defibDisarm = getElement('defibDisarm');
 const defibShock = getElement('defibShock');
 const defibStatus = getElement('defibStatus');
+const aedAnalyze = getElement('aedAnalyze');
+const pacerStart = getElement('pacerStart');
+const pacerRate = getElement('pacerRate');
+const pacerOutput = getElement('pacerOutput');
+const pacerMode = getElement('pacerMode');
+const captureThreshold = getElement('captureThreshold');
+const syncExcludedRhythms = new Set(['None', 'Asystole', 'VFib', 'Fine VFib', 'Torsades de pointes']);
+const shockLabels = { manual: 'manual shock', sync: 'synchronized cardioversion', aed: 'AED shock' };
+const aedTrainingEnergy = 150;
 let chargeReadyAt = null;
-let chargeSession = '';
+let syncHeldSince = null;
+let aedRun = null;
+let therapySession = '';
 let remoteDefibSession = null;
 let defibNotice = '';
 
-function defibSession() {
+function currentTherapySession() {
   return directRole === 'patient'
     ? directEpoch + ':' + remoteDefibSession
     : String(sessionInfo.startedAt);
 }
 
+function therapyLive() {
+  return scenarioStarted && !paused;
+}
+
+function shockEventText(mode, energy) {
+  return Object.hasOwn(shockLabels, mode) && defibEnergies.has(energy)
+    ? 'Simulated ' + shockLabels[mode] + ' · ' + energy + ' J'
+    : '';
+}
+
+function paceEventText({ action, rate, output, mode }) {
+  if (action === 'stop') return 'Simulated pacing stopped';
+  if (!['start', 'capture', 'loss'].includes(action) || !['Demand', 'Fixed'].includes(mode) ||
+      !Number.isInteger(rate) || rate < 30 || rate > 180 ||
+      !Number.isInteger(output) || output < 0 || output > 140) return '';
+  const label = { start: 'pacing started', capture: 'electrical capture', loss: 'loss of electrical capture' };
+  return 'Simulated ' + label[action] + ' · ' + mode + ' · ' + rate + ' bpm · ' + output + ' mA';
+}
+
+function logTherapy(message, event) {
+  if (directRole !== 'patient') {
+    recordEvent(event);
+    return '';
+  }
+  if (!remoteDefibSession) return ' · Updated instructor build required for logging';
+  return directSend({ ...message, epoch: directEpoch, session: remoteDefibSession })
+    ? ''
+    : ' · Instructor link unavailable';
+}
+
+function logPacing(action) {
+  const { mode, rate, output } = pacing;
+  const message = { type: 'trainingPace', action, mode, rate, output };
+  logTherapy(message, paceEventText(message));
+}
+
+function cancelShock() {
+  chargeReadyAt = null;
+  syncHeldSince = null;
+  aedRun = null;
+}
+
+function stopPacing(log = false) {
+  if (pacing.running && log) logPacing('stop');
+  Object.assign(pacing, {
+    running: false, next: Infinity, lastCapture: -Infinity, lastSensed: -Infinity, capture: null,
+  });
+}
+
+function resetTherapy() {
+  cancelShock();
+  stopPacing();
+  defibNotice = '';
+}
+
+function deliverShock(mode, energy) {
+  cancelShock();
+  defibNotice = shockEventText(mode, energy)
+    + logTherapy({ type: 'trainingShock', mode, energy }, shockEventText(mode, energy));
+  if (mode === 'sync') therapyMode.value = 'manual';
+  updateDefibControls();
+}
+
+function aedRhythm() {
+  const rhythm = patientState.rhythm;
+  if (rhythm === 'VFib' || rhythm === 'Fine VFib') return 'VF';
+  if (rhythm === 'VTach' && pulselessVT) return 'Pulseless VT';
+  return null;
+}
+
+function advanceAED(to) {
+  if (!aedRun) return;
+  const rhythm = aedRhythm();
+  if (rhythm !== aedRun.rhythm) {
+    cancelShock();
+    defibNotice = 'Rhythm changed · analyze again';
+  } else if (to >= aedRun.until && aedRun.stage === 'standClear') {
+    deliverShock('aed', aedTrainingEnergy);
+  } else if (to >= aedRun.until) {
+    if (!rhythm) {
+      aedRun = null;
+      defibNotice = 'No shock advised';
+    } else {
+      aedRun = { rhythm, stage: 'standClear', until: to + 3 };
+    }
+  }
+}
+
+function pacingIntrinsicScale(time) {
+  for (let i = pacingPulses.length - 1; i >= 0; i--) {
+    const pulse = pacingPulses[i];
+    if (time - pulse.time > 3) break;
+    if (pulse.captured && time >= pulse.time && time < pulse.refractoryUntil) return 0.12;
+  }
+  return 1;
+}
+
+function pacedComplex(time) {
+  let signal = 0;
+  for (let i = pacingPulses.length - 1; i >= 0; i--) {
+    const pulse = pacingPulses[i];
+    const age = time - pulse.time;
+    if (age > 0.5) break;
+    if (!pulse.captured || age < 0) continue;
+    signal += gauss(age, 0.033, 0.016, 0.92) - gauss(age, 0.083, 0.024, 0.48)
+      - gauss(age, 0.23, 0.047, 0.27);
+  }
+  return signal;
+}
+
+function advancePacing(to) {
+  if (!pacing.running || pacing.next > to) return false;
+  const time = pacing.next;
+  pacing.next = time + 60 / pacing.rate;
+  if (!pacing.output || patientState.rhythm === 'None') return false;
+  const captured = pacing.output >= pacingThreshold &&
+    !['VFib', 'Fine VFib', 'Torsades de pointes'].includes(patientState.rhythm);
+  // During demand pacing, a captured beat resets the simulated ventricular escape interval.
+  const recovery = pacing.mode === 'Demand' && patientState.hr > 0
+    ? Math.min(3, Math.max(0.35, 60 / patientState.hr - 0.01))
+    : 0.35;
+  pacingPulses.push({ time, captured, refractoryUntil: time + recovery });
+  if (captured) pacing.lastCapture = time;
+  if (captured !== pacing.capture && (captured || pacing.capture === true)) {
+    logPacing(captured ? 'capture' : 'loss');
+  }
+  pacing.capture = captured;
+  return captured;
+}
+
+function advanceTherapy(from, to, ms) {
+  if (!therapyLive() || therapySession !== currentTherapySession()) {
+    resetTherapy();
+    therapySession = currentTherapySession();
+  }
+  advanceAED(to);
+  const mode = therapyMode.value;
+  const peaks = ecgModel.beats.map(rPeakTime)
+    .filter((time) => time > from && time <= to).sort((a, b) => a - b);
+  const sensing = !syncExcludedRhythms.has(patientState.rhythm) && patientState.hr > 0;
+  let heard = false;
+  for (const time of peaks) {
+    if (pacing.next < time && advancePacing(time)) heard = true;
+    if (pacingIntrinsicScale(time) < 1) continue;
+    heard = true;
+    if (sensing && pacing.running) {
+      pacing.lastSensed = time;
+      if (pacing.mode === 'Demand') pacing.next = time + 60 / pacing.rate;
+    }
+    if (mode !== 'sync' || !sensing) continue;
+    syncMarks.push(time);
+    if (syncHeldSince !== null && time >= syncHeldSince &&
+        chargeReadyAt !== null && ms >= chargeReadyAt && ms < chargeReadyAt + 60000) {
+      deliverShock('sync', Number(defibEnergy.value));
+      break;
+    }
+  }
+  heard = advancePacing(to) || heard;
+  while (syncMarks.length && syncMarks[0] < to - 6) syncMarks.shift();
+  while (pacingPulses.length && pacingPulses[0].time < to - 6) pacingPulses.shift();
+  return heard;
+}
+
 function updateDefibControls(now = performance.now()) {
-  const live = scenarioStarted && !paused;
-  if (!live || chargeSession !== defibSession()) {
-    chargeReadyAt = null;
-    defibNotice = '';
+  const live = therapyLive();
+  if (!live || therapySession !== currentTherapySession()) {
+    resetTherapy();
+    therapySession = currentTherapySession();
   }
   if (chargeReadyAt !== null && now >= chargeReadyAt + 60000) {
-    chargeReadyAt = null;
+    cancelShock();
     defibNotice = 'Charge expired · disarmed';
   }
+  const mode = therapyMode.value;
+  const isAED = mode === 'aed';
+  const isPacer = mode === 'pacer';
   const charging = chargeReadyAt !== null && now < chargeReadyAt;
+  getElement('defibControls').hidden = isPacer;
+  getElement('pacerControls').hidden = !isPacer;
+  aedAnalyze.hidden = isPacer || !isAED;
+  defibDisarm.textContent = isAED ? 'Cancel' : 'Disarm';
+  for (const control of [defibEnergy, getElement('defibEnergyLabel'), defibCharge, defibShock])
+    control.hidden = isPacer || isAED;
+  defibShock.textContent = mode === 'sync' ? 'Hold to Shock' : 'Shock';
+  aedAnalyze.disabled = !live || aedRun !== null;
   defibCharge.disabled = !live || chargeReadyAt !== null;
-  defibDisarm.disabled = chargeReadyAt === null;
+  defibDisarm.disabled = chargeReadyAt === null && aedRun === null;
   defibShock.disabled = chargeReadyAt === null || charging;
+  pacerStart.disabled = !live;
+  pacerStart.textContent = pacing.running ? 'Stop pacing' : 'Start pacing';
   let status = defibNotice || 'Select energy, then charge.';
-  if (!live) status = 'Start or resume the scenario to use defib controls.';
-  else if (charging) status = 'Charging to ' + defibEnergy.value + ' J…';
-  else if (chargeReadyAt !== null) status = 'Ready · ' + defibEnergy.value + ' J · Stand clear';
+  if (!live) status = 'Start or resume the scenario to use these controls.';
+  else if (isAED) {
+    if (!aedRun) status = defibNotice || 'Press Analyze to check the simulated rhythm.';
+    else if (aedRun.stage === 'analysis') status = 'Analyzing rhythm…';
+    else status = 'Shock advised · ' + aedRun.rhythm + ' · Stand clear · Auto shock in ' +
+      Math.max(1, Math.ceil(aedRun.until - scenarioSeconds)) + ' s';
+  } else if (isPacer) {
+    if (!pacing.running) status = 'Set pacing rate and output, then start pacing.';
+    else if (patientState.rhythm === 'None') status = 'ECG signal disconnected';
+    else if (!pacing.output) status = 'Pacing on · Increase output to deliver pulses';
+    else if (pacing.mode === 'Demand' && pacing.lastSensed > pacing.lastCapture &&
+             scenarioSeconds - pacing.lastSensed < 60 / pacing.rate) status = 'Demand pacing · Intrinsic beat sensed';
+    else if (pacing.capture === null) status = 'Pacing on · Awaiting next pulse';
+    else status = pacing.capture ? 'Pacing · Electrical capture' : 'Pacing · No electrical capture';
+  } else if (charging) status = 'Charging to ' + defibEnergy.value + ' J…';
+  else if (chargeReadyAt !== null) {
+    status = 'Ready · ' + defibEnergy.value + ' J · Stand clear';
+    if (mode === 'sync') status += syncHeldSince === null ? ' · Hold to shock' : ' · Waiting for R wave';
+  } else if (mode === 'sync') status = 'Sync on · Check S markers, select energy, then charge.';
   if (defibStatus.textContent !== status) defibStatus.textContent = status;
 }
 
+therapyMode.onchange = () => {
+  cancelShock();
+  stopPacing(true);
+  defibNotice = '';
+  updateDefibControls();
+};
 defibEnergy.onchange = () => {
   defibNotice = chargeReadyAt === null ? '' : 'Energy changed · disarmed';
-  chargeReadyAt = null;
+  cancelShock();
   updateDefibControls();
 };
 defibCharge.onclick = () => {
   updateDefibControls();
   if (defibCharge.disabled) return;
-  chargeSession = defibSession();
   chargeReadyAt = performance.now() + 1000;
   defibNotice = '';
   updateDefibControls();
 };
 defibDisarm.onclick = () => {
-  chargeReadyAt = null;
-  defibNotice = 'Disarmed';
+  defibNotice = aedRun ? 'Analysis canceled' : 'Disarmed';
+  cancelShock();
   updateDefibControls();
 };
 defibShock.onclick = () => {
   updateDefibControls();
-  if (defibShock.disabled) return;
-  const energy = Number(defibEnergy.value);
-  chargeReadyAt = null;
-  defibNotice = 'Simulated shock delivered · ' + energy + ' J';
-  if (directRole === 'patient') {
-    if (!remoteDefibSession)
-      defibNotice += ' · Updated instructor build required for logging';
-    else if (!directSend({ type: 'trainingShock', epoch: directEpoch, session: remoteDefibSession, energy }))
-      defibNotice += ' · Instructor link unavailable';
-  } else {
-    recordEvent('Simulated manual shock · ' + energy + ' J');
+  if (!defibShock.disabled && therapyMode.value === 'manual') deliverShock('manual', Number(defibEnergy.value));
+};
+function holdSyncShock() {
+  updateDefibControls();
+  if (therapyMode.value === 'sync' && !defibShock.disabled) syncHeldSince = scenarioSeconds;
+}
+defibShock.onpointerdown = (event) => {
+  if (event.button !== 0 || therapyMode.value !== 'sync') return;
+  defibShock.setPointerCapture(event.pointerId);
+  holdSyncShock();
+};
+function releaseSyncShock() {
+  syncHeldSince = null;
+}
+defibShock.onpointerup = releaseSyncShock;
+defibShock.onpointercancel = releaseSyncShock;
+defibShock.onlostpointercapture = releaseSyncShock;
+defibShock.onblur = releaseSyncShock;
+defibShock.onkeydown = (event) => {
+  if (therapyMode.value !== 'sync' || ![' ', 'Enter'].includes(event.key)) return;
+  event.preventDefault();
+  if (!event.repeat) holdSyncShock();
+};
+defibShock.onkeyup = releaseSyncShock;
+aedAnalyze.onclick = () => {
+  updateDefibControls();
+  if (aedAnalyze.disabled) return;
+  aedRun = { rhythm: aedRhythm(), until: scenarioSeconds + 3, stage: 'analysis' };
+  defibNotice = '';
+  updateDefibControls();
+};
+function setPacerControls() {
+  if (!pacerRate.validity.valid || !pacerOutput.validity.valid) return false;
+  const rate = pacerRate.valueAsNumber;
+  if (pacing.running && (rate !== pacing.rate || pacerMode.value !== pacing.mode))
+    pacing.next = scenarioSeconds + 60 / rate;
+  Object.assign(pacing, { mode: pacerMode.value, rate, output: pacerOutput.valueAsNumber });
+  return true;
+}
+pacerRate.onchange = pacerOutput.onchange = pacerMode.onchange = () => {
+  if (setPacerControls()) return;
+  pacerRate.value = pacing.rate;
+  pacerOutput.value = pacing.output;
+};
+pacerRate.oninput = pacerOutput.oninput = setPacerControls;
+function changePacerOutput(delta) {
+  pacerOutput.value = Math.min(140, Math.max(0, pacing.output + delta));
+  setPacerControls();
+  updateDefibControls();
+}
+getElement('pacerOutputDown').onclick = () => changePacerOutput(-5);
+getElement('pacerOutputUp').onclick = () => changePacerOutput(10);
+pacerStart.onclick = () => {
+  updateDefibControls();
+  if (pacerStart.disabled) return;
+  if (pacing.running) stopPacing(true);
+  else if (setPacerControls()) {
+    Object.assign(pacing, { running: true, next: scenarioSeconds + 60 / pacing.rate });
+    logPacing('start');
   }
   updateDefibControls();
 };
+captureThreshold.onchange = () => {
+  if (captureThreshold.validity.valid) pacingThreshold = captureThreshold.valueAsNumber;
+  else captureThreshold.value = pacingThreshold;
+};
+getElement('vtPulseless').onchange = (event) => {
+  pulselessVT = event.target.checked;
+};
+
 getElement('chooseStandalone').onclick = () => {
   getElement('directRolePicker').close();
   getElement('directRoleName').textContent = 'Single device';
