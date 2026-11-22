@@ -1360,8 +1360,7 @@ button:disabled {
           ><canvas id="co2" aria-label="Animated simulated capnography"></canvas></div
         ><div class="reading yellow" id="alarmCO2"
           ><span>ETCO₂ <span class="unit">mmHg</span></span
-          ><b class="number" id="co2Out"></b><span id="capName" class="unit"></span
-        ></div> </section
+          ><b class="number" id="co2Out"></b></div> </section
       ><section class="tiles"
         ><div class="tile" id="alarmBP"
           ><span>NIBP · mmHg</span><b id="bpOut"></b><span id="mapOut"></span
@@ -3569,7 +3568,6 @@ function renderPatientReadings() {
   getElement('rrOut').textContent = Math.round(c.rr);
   getElement('tempOut').textContent = c.temp.toFixed(1);
   getElement('fOut').textContent = ((c.temp * 9) / 5 + 32).toFixed(1) + ' °F';
-  getElement('capName').textContent = c.cap;
   getElement('state').textContent = paused
     ? 'Simulation paused'
     : activeTransition
