@@ -1137,14 +1137,27 @@ button:disabled {
   background: rgba(0, 0, 0, 0.7);
 }
 
-#defibPanel {
+#defibPanel,
+#monitorSettings {
   padding: 10px 12px;
   margin: 10px 0 0;
   border: 1px solid #355364;
   border-radius: 8px;
   background: #13232e;
 }
-#defibPanel summary { cursor: pointer; padding: 6px 0; }
+#defibPanel summary,
+#monitorSettings summary { cursor: pointer; padding: 6px 0; }
+#monitorSettings {
+  flex: 1 0 100%;
+  margin: 0;
+}
+.monitor-settings-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
 #defibControls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
 #defibControls button, #defibEnergy { min-height: 44px; }
 #defibEnergy { width: auto; }
@@ -1264,16 +1277,25 @@ button:disabled {
         ><button type="button" id="padDone">Done</button
         ><button type="button" id="padCancel">Cancel</button></div
       ></dialog
-    ><header
-      ><strong>PCC / PATIENT MONITOR</strong><small>SIMULATION</small
-      ><button id="openDirectPairing">Pair devices</button
-      ><button id="directReconnect" style="background: #28656a">Reconnect</button
-      ><button id="changeDirectRole">Change role</button><button id="student">Patient view</button
-      ><button id="pause">Pause</button><button id="sound">Mute Sounds</button
-      ><button id="restoreAudio">Restore Audio</button><button id="testAudio">Test Audio</button
-      ><small id="audioDiagnostic" role="status">Audio not tested</small
-      ><button id="silenceAlarms">Silence Alarms</button></header
     >
+    <header>
+      <strong>PCC / PATIENT MONITOR</strong><small>SIMULATION</small>
+      <button id="sound">Mute Sounds</button>
+      <button id="silenceAlarms">Silence Alarms</button>
+      <details id="monitorSettings">
+        <summary>Monitor Settings</summary>
+        <div class="monitor-settings-controls">
+          <button id="openDirectPairing">Pair devices</button>
+          <button id="directReconnect" style="background: #28656a">Reconnect</button>
+          <button id="changeDirectRole">Change role</button>
+          <button id="student">Patient view</button>
+          <button id="pause">Pause</button>
+          <button id="restoreAudio">Restore Audio</button>
+          <button id="testAudio">Test Audio</button>
+          <small id="audioDiagnostic" role="status">Audio not tested</small>
+        </div>
+      </details>
+    </header>
     <aside style="padding: 10px 16px; background: #18323e"
       ><strong>Direct v6 · Adjustable pacing spikes</strong> · <span id="directRoleName">Choose role</span> ·
       <span id="directStatus" role="status">Direct browser pairing · experimental</span><br /><small
