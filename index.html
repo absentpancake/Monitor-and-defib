@@ -1159,6 +1159,20 @@ button:disabled {
 #pacerControls button, #pacerControls input, #pacerControls select, #therapyMode { min-height: 44px; }
 #defibShock, #defibShock * { touch-action: none; }
 #defibStatus { margin: 8px 0 0; color: #ffd269; }
+#presetPanel {
+  border: 1px solid #355364;
+  border-radius: 8px;
+  margin: 8px 0;
+  padding: 8px 12px;
+}
+#presetPanel summary { cursor: pointer; min-height: 44px; line-height: 44px; }
+#presetChoices, .preset-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.preset-edit { margin-top: 8px; }
+#presetChoices button, #presetSave, #presetName { min-height: 44px; }
+#presetChoices button { max-width: 100%; overflow-wrap: anywhere; }
+#presetChoices button[aria-pressed="true"] { background: #205676; box-shadow: inset 0 0 0 2px #77caff; }
+#presetName { width: min(18rem, 100%); }
+#presetStatus { margin: 8px 0 0; color: #c1d8e5; font-size: .9rem; }
     </style></head
   ><body class="setup-mode student-view">
     <section id="startup" class="startup"
@@ -1261,7 +1275,7 @@ button:disabled {
       ><button id="silenceAlarms">Silence Alarms</button></header
     >
     <aside style="padding: 10px 16px; background: #18323e"
-      ><strong>Direct v6 · Sync / Pacer / AED</strong> · <span id="directRoleName">Choose role</span> ·
+      ><strong>Direct v6 · Patient presets</strong> · <span id="directRoleName">Choose role</span> ·
       <span id="directStatus" role="status">Direct browser pairing · experimental</span><br /><small
         id="offlineReady"
         >Checking offline copy…</small
@@ -1358,6 +1372,16 @@ button:disabled {
           <label for="captureThreshold">Pacing capture threshold (mA)</label>
           <input id="captureThreshold" type="number" min="1" max="140" step="1" value="60" required>
         </div>
+        <details id="presetPanel" open>
+          <summary>Patient presets</summary>
+          <div id="presetChoices" role="group" aria-label="Choose a patient preset slot"></div>
+          <div class="preset-edit">
+            <label for="presetName">Preset name</label>
+            <input id="presetName" type="text" maxlength="36" autocomplete="off">
+            <button id="presetSave" type="button">Save to slot 1</button>
+          </div>
+          <p id="presetStatus" role="status">Save the future targets to a slot, or select a saved preset to load it.</p>
+        </details>
         <div class="compact-table-scroll"
           ><table class="vitals-table"
             ><thead
@@ -1539,7 +1563,7 @@ button:disabled {
           transition. Select Linked ventilation to vary ETCO₂ inversely with RR; this simplified
           relationship assumes unchanged breath volume, metabolism, and perfusion. The manual mode
           preserves independent scenario values. Values can be set independently for scenario
-          design; selecting a rhythm does not prescribe a matching heart rate. “None” represents a
+          design. Added rhythms load an editable starting heart rate. “None” represents a
           disconnected signal. Asystole/VF show no numeric ECG rate; ventilation remains
           independently controlled.<br />Version 27 · NSR P wave hidden at HR ≥150 bpm as a training
           display setting. · Normal ETCO₂ I:E timing is 1:2: inspiration occupies one-third of each
@@ -1553,6 +1577,10 @@ button:disabled {
           Capnography patterns alone do not diagnose cardiac arrest or ROSC. MAP is estimated as
           (SBP + 2 × DBP) / 3. Default alert limits are training settings, not clinical guidance.
           Expanded waveform references:
+          <a href="https://www.ecgbook.com/" target="_blank" rel="noopener">ECGbook</a>
+          · <a href="https://emcrit.org/ibcc/co2/" target="_blank" rel="noopener">EMCrit — waveform capnography</a>
+          · <a href="https://derangedphysiology.com/main/required-reading/respiratory-intensive-care/Chapter-451/end-tidal-capnometry-waveform-interpretation" target="_blank" rel="noopener">Deranged Physiology — end-tidal capnometry examples</a>
+          ·
           <a
             href="https://derangedphysiology.com/main/cicm-primary-exam/respiratory-system/Chapter-5593/abnormal-capnography-waveforms-and-their-interpretation"
             >Deranged Physiology — capnography</a
@@ -1565,8 +1593,7 @@ button:disabled {
           · Masimo PLM-11098B capnography guide (uploaded) · Lisa Leonard, Basic ECG Interpretation
           (uploaded). Waveforms are mathematical illustrations for instructor review, not diagnostic
           validation. Existing NSR P-wave suppression at ≥150 bpm remains an instructor-requested
-          display rule, not a physiological threshold. Rhythm and morphology targets remain
-          independent of numeric vital targets.<br />References:
+          display rule, not a physiological threshold. Morphology settings and numeric targets can be edited separately.<br />References:
           <a
             href="https://cpr.heart.org/en/resuscitation-science/cpr-and-ecc-guidelines/adult-advanced-life-support"
             target="_blank"
@@ -1893,10 +1920,22 @@ const DEFAULT_SETTINGS = {
 const ECG_RHYTHMS = [
   'None',
   'NSR',
+  'Sinus bradycardia',
+  'Sinus tachycardia',
+  'Wandering atrial pacemaker',
+  'Junctional bradycardia',
+  'Junctional escape rhythm',
+  'Accelerated junctional rhythm',
+  'Junctional tachycardia',
+  'Idioventricular rhythm',
+  'Accelerated idioventricular rhythm',
   'Respiratory sinus arrhythmia',
   'Sinus pause / arrest',
   'SA exit block',
+  'SA Wenckebach',
   'PACs',
+  'Blocked PACs',
+  'Premature junctional complexes',
   'PVCs',
   'Ventricular bigeminy',
   'Ventricular trigeminy',
@@ -1904,16 +1943,55 @@ const ECG_RHYTHMS = [
   '1st Degree HB',
   '2nd Degree HB Type 1',
   '2nd Degree HB Type 2',
+  '2:1 AV block',
+  'High-grade AV block (3:1)',
   '3rd Degree HB',
   'SVT',
+  'Focal atrial tachycardia',
+  'Multifocal atrial tachycardia',
+  'AVNRT (short RP example)',
+  'Orthodromic AVRT (example)',
   'AFib',
   'AFlutter',
   'VTach',
+  'Polymorphic VT',
+  'Bidirectional VT',
+  'Ventricular flutter',
   'Torsades de pointes',
   'VFib',
   'Fine VFib',
   'Asystole',
 ];
+const ECG_PRESET_RATES = new Map([
+  ['Sinus bradycardia', 45], ['Sinus tachycardia', 125], ['Wandering atrial pacemaker', 75],
+  ['Junctional bradycardia', 35], ['Junctional escape rhythm', 48],
+  ['Accelerated junctional rhythm', 80], ['Junctional tachycardia', 125],
+  ['Idioventricular rhythm', 32], ['Accelerated idioventricular rhythm', 75],
+  ['Blocked PACs', 68], ['Premature junctional complexes', 75], ['SA Wenckebach', 66],
+  ['2:1 AV block', 44], ['High-grade AV block (3:1)', 32],
+  ['Focal atrial tachycardia', 135], ['Multifocal atrial tachycardia', 120],
+  ['AVNRT (short RP example)', 165], ['Orthodromic AVRT (example)', 175],
+  ['Polymorphic VT', 205], ['Bidirectional VT', 150], ['Ventricular flutter', 245],
+]);
+const JUNCTIONAL_RHYTHMS = new Set([
+  'Junctional bradycardia', 'Junctional escape rhythm',
+  'Accelerated junctional rhythm', 'Junctional tachycardia',
+]);
+const VENTRICULAR_TACHYCARDIAS = new Set([
+  'VTach', 'Polymorphic VT', 'Bidirectional VT', 'Ventricular flutter', 'Torsades de pointes',
+]);
+const UNSTABLE_SYNC_MARKERS = new Set([
+  'Polymorphic VT', 'Bidirectional VT', 'Ventricular flutter', 'Torsades de pointes',
+]);
+const AV_CONDUCTION_COUNTS = new Map([
+  ['1st Degree HB', [1, 1]],
+  ['2nd Degree HB Type 1', [4, 3]],
+  ['2nd Degree HB Type 2', [3, 2]],
+  ['2:1 AV block', [2, 1]],
+  ['High-grade AV block (3:1)', [3, 1]],
+  ['3rd Degree HB', [1, 0]],
+]);
+
 const ECG_MORPHOLOGIES = [
   'Standard',
   'Bundle branch block (wide QRS)',
@@ -1928,12 +2006,20 @@ const ECG_MORPHOLOGIES = [
 const CAPNOGRAPHY_PATTERNS = [
   'None',
   'Normal',
+  'Hypoventilation',
+  'Hyperventilation',
+  'Low ETCO₂ / preserved shape',
+  'Rising ETCO₂ over successive breaths',
+  'Falling ETCO₂ over successive breaths',
+  'Mild expiratory obstruction',
   'Bronchospasm',
   'Mechanical airway obstruction',
   'Rebreathing CO2',
   'Curare Cleft',
+  'Missed inspiratory efforts',
   'Secondary (camel) hump',
   'Airway / circuit leak',
+  'Intermittent loss of sampled breaths',
   'Loss of waveform / disconnection',
   'Esophageal intubation (washout)',
   'Endobronchial / bifid pattern',
@@ -1945,6 +2031,14 @@ const CAPNOGRAPHY_PATTERNS = [
   'ROSC',
   'Apnea',
 ];
+const CAP_PRESETS = new Map([
+  ['Hypoventilation', { rr: 8, etco2: 55 }],
+  ['Hyperventilation', { rr: 28, etco2: 26 }],
+  ['Low ETCO₂ / preserved shape', { etco2: 20 }],
+  ['Rising ETCO₂ over successive breaths', { etco2: 40, changePerBreath: 2.5 }],
+  ['Falling ETCO₂ over successive breaths', { etco2: 40, changePerBreath: -2.5 }],
+]);
+
 const VITAL_FIELDS = [
   ['hr', 'Heart rate · bpm', 0, 250, 1],
   ['sbp', 'Systolic BP · mmHg', 0, 260, 1],
@@ -2846,7 +2940,7 @@ function linkedCO2(rr) {
 }
 
 function specialCap(c) {
-  return [
+  return CAP_PRESETS.has(c) || [
     'CPR',
     'Cardiac Arrest',
     'ROSC',
@@ -2865,7 +2959,11 @@ getElement('rr').addEventListener('input', updateTarget);
 ventilationModeInput.onchange = updateTarget;
 getElement('cap').onchange = () => {
   const c = getElement('cap').value;
-  if (c === 'CPR') {
+  const preset = CAP_PRESETS.get(c);
+  if (preset) {
+    getElement('etco2').value = preset.etco2;
+    if (preset.rr !== undefined) getElement('rr').value = preset.rr;
+  } else if (c === 'CPR') {
     getElement('etco2').value = 10;
     getElement('rr').value = 10;
   } else if (c === 'ROSC') getElement('etco2').value = 55;
@@ -2915,6 +3013,12 @@ function effectiveCO2() {
       : patientState.etco2;
   if (patientState.cap === 'Esophageal intubation (washout)')
     value *= Math.exp(-0.7 * Math.max(0, respiratoryPhase - capStartPhase));
+  const elapsedBreaths = Math.max(0, Math.floor(respiratoryPhase) - Math.floor(capStartPhase));
+  const changePerBreath = CAP_PRESETS.get(patientState.cap)?.changePerBreath;
+  if (changePerBreath !== undefined)
+    value += changePerBreath * Math.min(8, elapsedBreaths);
+  if (patientState.cap === 'Intermittent loss of sampled breaths' && elapsedBreaths % 4 === 2)
+    return 0;
   return Math.max(0, Math.min(80, value));
 }
 
@@ -3525,7 +3629,12 @@ function beatInterval(index, fromTime = scenarioSeconds) {
     return rr * (0.55 + 0.9 * (seed - Math.floor(seed)));
   }
   if (r === 'Respiratory sinus arrhythmia') return rsaInterval(fromTime);
-  if (r === 'PACs') return rr * ([1, 1, 1, 0.65, 1.1][index % 5] / 0.95);
+  if (r === 'Wandering atrial pacemaker' || r === 'Multifocal atrial tachycardia')
+    return rr * [0.82, 1.17, 0.94, 1.21, 0.86][index % 5];
+  if (r === 'SA Wenckebach') return rr * [1.28, 0.99, 0.91, 0.82][index % 4];
+  if (r === 'Polymorphic VT') return rr * [0.84, 1.06, 1.18, 0.92][index % 4];
+  if (r === 'PACs' || r === 'Premature junctional complexes')
+    return rr * ([1, 1, 1, 0.65, 1.1][index % 5] / 0.95);
   if (['PVCs', 'Ventricular trigeminy', 'Ventricular bigeminy', 'PVC couplets'].includes(r)) {
     const v =
       r === 'PVCs'
@@ -3537,6 +3646,7 @@ function beatInterval(index, fromTime = scenarioSeconds) {
             : [1.75, 1, 1, 0.65, 0.6, 1];
     return rr * v[index % v.length];
   }
+  if (r === 'Blocked PACs') return rr * (index % 4 === 3 ? 1.45 : 0.85);
   return rr * (r === 'Sinus pause / arrest' || r === 'SA exit block' ? 0.8 : 1);
 }
 
@@ -3553,14 +3663,10 @@ function advanceECG() {
   }
   if (['None', 'Asystole', 'VFib', 'Fine VFib'].includes(r) || patientState.hr <= 0) return;
   const horizon = scenarioSeconds + 0.4;
-  if (
-    ['1st Degree HB', '2nd Degree HB Type 1', '2nd Degree HB Type 2', '3rd Degree HB'].includes(r)
-  ) {
-    const af =
-      r === '3rd Degree HB'
-        ? 80 / 60
-        : (patientState.hr / 60) *
-          (r === '2nd Degree HB Type 1' ? 4 / 3 : r === '2nd Degree HB Type 2' ? 3 / 2 : 1);
+  const avConduction = AV_CONDUCTION_COUNTS.get(r);
+  if (avConduction) {
+    const [atrialBeats, conductedBeats] = avConduction;
+    const af = conductedBeats ? patientState.hr / 60 * atrialBeats / conductedBeats : 80 / 60;
     while (model.nextAtrial <= horizon) {
       const n = model.atrialIndex++,
         time = model.nextAtrial;
@@ -3568,10 +3674,7 @@ function advanceECG() {
         time,
         amp: 0.14,
       });
-      const blocked =
-        r === '3rd Degree HB' ||
-        (r === '2nd Degree HB Type 1' && n % 4 === 3) ||
-        (r === '2nd Degree HB Type 2' && n % 3 === 2);
+      const blocked = n % atrialBeats >= conductedBeats;
       const pr =
         r === '1st Degree HB' ? 0.26 : r === '2nd Degree HB Type 1' ? 0.15 + 0.05 * (n % 4) : 0.17;
       if (!blocked)
@@ -3601,22 +3704,35 @@ function advanceECG() {
         (r === 'Ventricular bigeminy' && n % 2 === 1) ||
         (r === 'Ventricular trigeminy' && n % 3 === 2) ||
         (r === 'PVC couplets' && [3, 4].includes(n % 6));
-      if (pvc || r === 'VTach' || r === 'Torsades de pointes') kind = 'wide';
-      if (!(['Sinus pause / arrest', 'SA exit block'].includes(r) && n % 5 === 4)) {
-        model.beats.push({
-          time,
-          kind,
-          rhythm: r,
-        });
-        const noP =
-          pvc ||
-          ['AFib', 'AFlutter', 'SVT', 'VTach', 'Torsades de pointes'].includes(r) ||
-          (r === 'NSR' && patientState.hr >= 150);
-        if (!noP)
-          model.atria.push({
-            time: time - (patientState.morph === 'WPW pattern' ? 0.09 : 0.16),
-            amp: r === 'PACs' && n % 5 === 3 ? 0.09 : 0.14,
-          });
+      const ventricular = VENTRICULAR_TACHYCARDIAS.has(r) ||
+        r === 'Idioventricular rhythm' || r === 'Accelerated idioventricular rhythm';
+      if (pvc || ventricular) kind = 'wide';
+      const sinusPause = ['Sinus pause / arrest', 'SA exit block'].includes(r) && n % 5 === 4;
+      if (!sinusPause) {
+        const polarity = r === 'Bidirectional VT' ? (n % 2 ? -0.85 : 1)
+          : r === 'Polymorphic VT' ? [1, -0.55, -0.93, 0.73, 0.47][n % 5] : 1;
+        model.beats.push({ time, kind, rhythm: r, polarity });
+        if (r === 'Blocked PACs' && n % 4 === 2) {
+          model.atria.push({ time: time + Math.min(0.38, (60 / patientState.hr) * 0.48), amp: -0.10 });
+        }
+        const retrograde = JUNCTIONAL_RHYTHMS.has(r) ||
+          (r === 'Premature junctional complexes' && n % 5 === 3);
+        if (retrograde || r === 'AVNRT (short RP example)' || r === 'Orthodromic AVRT (example)') {
+          const delay = r === 'AVNRT (short RP example)' ? 0.037 :
+            r === 'Orthodromic AVRT (example)' ? 0.09 : -0.065;
+          model.atria.push({ time: time + delay, amp: -0.13, width: 0.017 });
+        } else if (!pvc && !ventricular && !['AFib', 'AFlutter', 'SVT'].includes(r) &&
+                   !(r === 'NSR' && patientState.hr >= 150)) {
+          const multifocal = r === 'Wandering atrial pacemaker' || r === 'Multifocal atrial tachycardia';
+          const delay = multifocal ? [0.17, 0.11, 0.20][n % 3]
+            : r === 'Focal atrial tachycardia' ? 0.13
+            : patientState.morph === 'WPW pattern' ? 0.09 : 0.16;
+          const amplitude = multifocal ? [0.15, -0.12, 0.07][n % 3]
+            : r === 'Focal atrial tachycardia' ? -0.14
+            : r === 'PACs' && n % 5 === 3 ? 0.09 : 0.14;
+          model.atria.push({ time: time - delay, amp: amplitude,
+            width: multifocal ? [0.022, 0.018, 0.039][n % 3] : 0.025 });
+        }
       }
       model.next +=
         beatInterval(model.index, model.next) +
@@ -3648,6 +3764,8 @@ function ecgValue(p, t) {
       (Math.sin(2 * Math.PI * cardiacPhase) + 0.2 * Math.sin(4 * Math.PI * cardiacPhase + 0.3))
     );
   }
+  if (r === 'Ventricular flutter')
+    return 0.83 * Math.sin(2 * Math.PI * cardiacPhase);
   let y = 0.003 * Math.sin(t * 3);
   if (r === 'AFib')
     y +=
@@ -3657,7 +3775,7 @@ function ecgValue(p, t) {
     const f = (t * 5) % 1;
     y += f < 0.8 ? 0.05 - (0.17 * f) / 0.8 : -0.12 + (0.17 * (f - 0.8)) / 0.2;
   }
-  for (const a of ecgModel.atria) y += gauss(t, a.time, 0.025, a.amp);
+  for (const a of ecgModel.atria) y += gauss(t, a.time, a.width ?? 0.025, a.amp);
   for (const b of ecgModel.beats) {
     const d = t - b.time;
     if (d < -0.18 || d > 0.65) continue;
@@ -3669,8 +3787,8 @@ function ecgValue(p, t) {
         v += gauss(d, 0.07, 0.018, 0.45);
       if (b.rhythm === 'Torsades de pointes')
         v *= Math.sin(b.time * 1.5) * (0.65 + 0.25 * Math.sin(b.time * 0.7));
-      y += v;
-      if (!['VTach', 'Torsades de pointes'].includes(b.rhythm)) y += gauss(d, 0.28, 0.07, -0.24);
+      y += v * (b.polarity ?? 1);
+      if (!VENTRICULAR_TACHYCARDIAS.has(b.rhythm)) y += gauss(d, 0.28, 0.07, -0.24);
       continue;
     }
     y += gauss(d, -0.025, 0.008, -0.14) + gauss(d, 0, 0.009, 1.05) + gauss(d, 0.025, 0.01, -0.24);
@@ -3700,7 +3818,7 @@ function capnographyValue(p) {
   };
   // Normal I:E remains 1:2; abnormal patterns use an illustrative broad contour.
   let v = 0;
-  if (c.cap === 'Normal') {
+  if (c.cap === 'Normal' || CAP_PRESETS.has(c.cap) || c.cap === 'Intermittent loss of sampled breaths') {
     if (p < 1 / 3) return 0;
     const e = (p - 1 / 3) / (2 / 3);
     v =
@@ -3713,6 +3831,11 @@ function capnographyValue(p) {
     if (p < 0.15) v = 0.93 * smooth(p / 0.15);
     else if (p < 0.59) v = 0.93 + (0.07 * (p - 0.15)) / 0.44;
     else if (p < 0.65) v = 1 - smooth((p - 0.59) / 0.06);
+  }
+  if (c.cap === 'Mild expiratory obstruction') {
+    if (p < 0.23) v = 0.57 * smooth(p / 0.23);
+    else if (p < 0.63) v = 0.57 + 0.43 * (p - 0.23) / 0.4;
+    else v = p < 0.71 ? 1 - smooth((p - 0.63) / 0.08) : 0;
   }
   if (c.cap === 'Bronchospasm') {
     v = p < 0.59 ? Math.pow(p / 0.59, 1.15) : p < 0.65 ? 1 - smooth((p - 0.59) / 0.06) : 0;
@@ -3728,6 +3851,8 @@ function capnographyValue(p) {
             : 0;
   }
   if (c.cap === 'Curare Cleft') v = Math.max(0, v - gauss(p, 0.39, 0.018, 0.35));
+  if (c.cap === 'Missed inspiratory efforts')
+    v = Math.max(0, v - gauss(p, 0.32, 0.020, 0.28) - gauss(p, 0.51, 0.023, 0.42));
   if (c.cap === 'Secondary (camel) hump')
     v = Math.max(0, v - gauss(p, 0.39, 0.018, 0.26)) + (p > 0.7 ? gauss(p, 0.83, 0.025, 0.2) : 0);
   if (c.cap === 'Airway / circuit leak') {
@@ -5535,6 +5660,14 @@ getElement('numberPad').addEventListener('keydown', (e) => {
 });
 // ── Waveform guidance and UI initialization ──
 const capHints = {
+  'Hypoventilation': 'Starts with a slower RR and higher ETCO₂. Both targets are adjustable.',
+  'Hyperventilation': 'Starts with a faster RR and lower ETCO₂. Both targets are adjustable.',
+  'Low ETCO₂ / preserved shape': 'Low amplitude with preserved phases. Interpret alongside ventilation, perfusion, metabolism and sampling.',
+  'Rising ETCO₂ over successive breaths': 'The set ETCO₂ is the starting value. The level increases across eight breaths.',
+  'Falling ETCO₂ over successive breaths': 'The set ETCO₂ is the starting value. The level decreases across eight breaths.',
+  'Mild expiratory obstruction': 'A rounded rise and sloping plateau precede a terminal downstroke.',
+  'Missed inspiratory efforts': 'Two expiratory notches illustrate efforts that fail to trigger a full breath.',
+  'Intermittent loss of sampled breaths': 'One sampled breath in four drops out while the configured respiratory rate continues.',
   'Loss of waveform / disconnection':
     'Flat trace. This pattern has several patient and equipment causes; it does not identify one diagnosis.',
   'Esophageal intubation (washout)':
@@ -5562,12 +5695,20 @@ function updateWaveformHint() {
   if (r === 'Respiratory sinus arrhythmia')
     text +=
       ' RSA rate increases during inspiration (first third of the respiratory cycle) and decreases during expiration (remaining two thirds); HR is the baseline target.';
-  if (r.includes('HB'))
+  if (AV_CONDUCTION_COUNTS.has(r))
     text +=
       ' HR target is the approximate mean ventricular rate; atrial timing is modeled separately.';
+  if (ECG_PRESET_RATES.has(r))
+    text += ' This example loads an editable HR starting point.';
+  if (r === 'AVNRT (short RP example)' || r === 'Orthodromic AVRT (example)')
+    text += ' Retrograde P timing is illustrative. A single lead cannot establish the re-entry mechanism.';
   getElement('waveformHint').textContent = text;
 }
-getElement('rhythm').onchange = updateWaveformHint;
+getElement('rhythm').onchange = () => {
+  const rate = ECG_PRESET_RATES.get(getElement('rhythm').value);
+  if (rate !== undefined) setTouchTarget('hr', rate);
+  updateWaveformHint();
+};
 getElement('morph').onchange = updateWaveformHint;
 const capChangeForHint = getElement('cap').onchange;
 getElement('cap').onchange = () => {
@@ -5575,6 +5716,112 @@ getElement('cap').onchange = () => {
   updateWaveformHint();
 };
 updateWaveformHint();
+const presetSlotCount = 5;
+const presetPath = new URL('.', location.href).pathname;
+const presetKeyPrefix = 'pcc-monitor-presets:v1:' + presetPath + ':';
+const presetSlots = Array.from({ length: presetSlotCount }, (_, index) => readPreset(index));
+const presetChoices = getElement('presetChoices');
+const presetName = getElement('presetName');
+const presetSave = getElement('presetSave');
+const presetStatus = getElement('presetStatus');
+let selectedPreset = 0;
+
+function decodePreset(raw) {
+  try {
+    const preset = JSON.parse(raw);
+    const targets = preset?.targets;
+    if (!targets || typeof preset.name !== 'string' || !preset.name.trim() || preset.name.length > 36 ||
+        !['manual', 'linked'].includes(preset.ventilationMode)) return null;
+    const validNumbers = VITAL_FIELDS.every(([id, , min, max]) => {
+      const value = targets[id];
+      return Number.isFinite(value) && value >= min && value <= max;
+    });
+    if (!validNumbers || targets.dbp > targets.sbp ||
+        !ECG_RHYTHMS.includes(targets.rhythm) || !ECG_MORPHOLOGIES.includes(targets.morph) ||
+        !CAPNOGRAPHY_PATTERNS.includes(targets.cap)) return null;
+    return preset;
+  } catch {
+    return null;
+  }
+}
+
+function readPreset(index) {
+  try {
+    return decodePreset(localStorage.getItem(presetKeyPrefix + index));
+  } catch {
+    return null;
+  }
+}
+
+function renderPresetChoices() {
+  for (let index = 0; index < presetSlotCount; index++) {
+    const choice = presetChoices.children[index];
+    const slot = presetSlots[index];
+    choice.textContent = (index + 1) + ' · ' + (slot?.name ?? 'Empty');
+    choice.setAttribute('aria-pressed', String(index === selectedPreset));
+  }
+  presetSave.textContent = (presetSlots[selectedPreset] ? 'Replace slot ' : 'Save to slot ') + (selectedPreset + 1);
+}
+
+function selectPreset(index) {
+  selectedPreset = index;
+  const preset = presetSlots[index];
+  presetName.value = preset?.name ?? '';
+  renderPresetChoices();
+  if (!preset) {
+    presetStatus.textContent = 'Slot ' + (index + 1) + ' is empty. Save the current future targets here.';
+    return;
+  }
+  // Write directly to the targets so waveform-specific defaults cannot overwrite saved values.
+  for (const [id] of VITAL_FIELDS) getElement(id).value = preset.targets[id];
+  for (const id of ['rhythm', 'morph', 'cap']) getElement(id).value = preset.targets[id];
+  ventilationModeInput.value = preset.ventilationMode;
+  syncTouchTargets();
+  updateWaveformHint();
+  getElement('chartFeedback').textContent = preset.name + ' loaded. Use Apply now or Transition to targets.';
+  presetStatus.textContent = preset.name + ' loaded into future targets.';
+}
+
+for (let index = 0; index < presetSlotCount; index++) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.onclick = () => selectPreset(index);
+  presetChoices.append(button);
+}
+presetName.value = presetSlots[selectedPreset]?.name ?? '';
+renderPresetChoices();
+
+presetSave.onclick = () => {
+  updateTarget();
+  const targets = readTargets();
+  if (!targets) {
+    presetStatus.textContent = 'Check the highlighted target before saving.';
+    return;
+  }
+  const name = presetName.value.trim() || 'Preset ' + (selectedPreset + 1);
+  const preset = { name, targets, ventilationMode: ventilationModeInput.value };
+  presetSlots[selectedPreset] = preset;
+  presetName.value = name;
+  renderPresetChoices();
+  try {
+    localStorage.setItem(presetKeyPrefix + selectedPreset, JSON.stringify(preset));
+    presetStatus.textContent = name + ' saved on this device.';
+  } catch {
+    presetStatus.textContent = name + ' saved for this page session. Browser storage is unavailable.';
+  }
+};
+
+window.addEventListener('storage', (event) => {
+  if (!event.key?.startsWith(presetKeyPrefix)) return;
+  const index = Number(event.key.slice(presetKeyPrefix.length));
+  if (!Number.isInteger(index) || index < 0 || index >= presetSlotCount) return;
+  const originalName = presetSlots[index]?.name ?? '';
+  presetSlots[index] = decodePreset(event.newValue);
+  if (selectedPreset === index && presetName.value === originalName)
+    presetName.value = presetSlots[index]?.name ?? '';
+  renderPresetChoices();
+});
+
 document.addEventListener('visibilitychange', () => {});
 renderPatientReadings();
 requestAnimationFrame(animateMonitor);
@@ -6371,7 +6618,7 @@ const pacerRate = getElement('pacerRate');
 const pacerOutput = getElement('pacerOutput');
 const pacerMode = getElement('pacerMode');
 const captureThreshold = getElement('captureThreshold');
-const syncExcludedRhythms = new Set(['None', 'Asystole', 'VFib', 'Fine VFib', 'Torsades de pointes']);
+const syncExcludedRhythms = new Set(['None', 'Asystole', 'VFib', 'Fine VFib', ...UNSTABLE_SYNC_MARKERS]);
 const shockLabels = { manual: 'manual shock', sync: 'synchronized cardioversion', aed: 'AED shock' };
 const aedTrainingEnergy = 150;
 let chargeReadyAt = null;
@@ -6453,7 +6700,7 @@ function deliverShock(mode, energy) {
 function aedRhythm() {
   const rhythm = patientState.rhythm;
   if (rhythm === 'VFib' || rhythm === 'Fine VFib') return 'VF';
-  if (rhythm === 'VTach' && pulselessVT) return 'Pulseless VT';
+  if (VENTRICULAR_TACHYCARDIAS.has(rhythm) && pulselessVT) return 'Pulseless VT';
   return null;
 }
 
@@ -6503,7 +6750,7 @@ function advancePacing(to) {
   pacing.next = time + 60 / pacing.rate;
   if (!pacing.output || patientState.rhythm === 'None') return false;
   const captured = pacing.output >= pacingThreshold &&
-    !['VFib', 'Fine VFib', 'Torsades de pointes'].includes(patientState.rhythm);
+    !['VFib', 'Fine VFib'].includes(patientState.rhythm) && !VENTRICULAR_TACHYCARDIAS.has(patientState.rhythm);
   // During demand pacing, a captured beat resets the simulated ventricular escape interval.
   const recovery = pacing.mode === 'Demand' && patientState.hr > 0
     ? Math.min(3, Math.max(0.35, 60 / patientState.hr - 0.01))
