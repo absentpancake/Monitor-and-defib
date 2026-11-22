@@ -822,7 +822,17 @@ body.chart-focus .chart-launch {
 }
 .setup-grid input {
   width: 100%;
-  min-height: 48px;
+  min-width: 0;
+  height: 48px;
+}
+#setupDate::-webkit-date-and-time-value {
+  text-align: left;
+}
+#instructorConnectionStatus {
+  flex-shrink: 0;
+  margin: 0 0 10px;
+  padding: 10px 16px;
+  background: #18323e;
 }
 .setup-card #beginScenario {
   min-height: 50px;
@@ -1296,13 +1306,7 @@ button:disabled {
         </div>
       </details>
     </header>
-    <aside style="padding: 10px 16px; background: #18323e"
-      ><strong>Direct v6 · Adjustable pacing spikes</strong> · <span id="directRoleName">Choose role</span> ·
-      <span id="directStatus" role="status">Direct browser pairing · experimental</span><br /><small
-        id="offlineReady"
-        >Checking offline copy…</small
-      ></aside
-    ><main
+    <main
       ><details id="defibPanel">
         <summary>Defib / Pacer · Simulation</summary>
         <label for="therapyMode">Mode</label>
@@ -1374,14 +1378,19 @@ button:disabled {
             aria-valuenow="0"
             ><div id="cuffFill"></div></div></div
         ><div class="tile cyan" id="alarmSpO2"
-          ><span>SpO₂ · %</span><b id="spo2Out"></b><span>Manual simulation value</span></div
+          ><span>SpO₂ · %</span><b id="spo2Out"></b></div
         ><div class="tile" id="alarmRR"
-          ><span>RESP · /min</span><b id="rrOut"></b><span>Simulated ventilation rate</span></div
+          ><span>RESP · /min</span><b id="rrOut"></b></div
         ><div class="tile" id="alarmTemp"
           ><span>TEMP · °C</span><b id="tempOut"></b><span id="fOut"></span></div
       ></section>
-      <section id="instructorChart" class="instructor-chart" aria-label="Compact instructor chart"
-        ><div class="chart-heading"
+      <section id="instructorChart" class="instructor-chart" aria-label="Compact instructor chart">
+        <aside id="instructorConnectionStatus" aria-label="Connection and offline status">
+          <strong>Direct v6</strong> · <span id="directRoleName">Choose role</span> ·
+          <span id="directStatus" role="status">Direct browser pairing · experimental</span><br />
+          <small id="offlineReady">Checking offline copy…</small>
+        </aside>
+        <div class="chart-heading"
           ><h2>Instructor chart</h2><button id="exitChart" hidden>Back to monitor</button></div
         >
         <div class="scenario-top-controls"
