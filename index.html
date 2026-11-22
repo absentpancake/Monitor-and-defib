@@ -1275,7 +1275,7 @@ button:disabled {
       ><button id="silenceAlarms">Silence Alarms</button></header
     >
     <aside style="padding: 10px 16px; background: #18323e"
-      ><strong>Direct v6 · Patient presets</strong> · <span id="directRoleName">Choose role</span> ·
+      ><strong>Direct v6 · Adjustable pacing spikes</strong> · <span id="directRoleName">Choose role</span> ·
       <span id="directStatus" role="status">Direct browser pairing · experimental</span><br /><small
         id="offlineReady"
         >Checking offline copy…</small
@@ -3560,6 +3560,7 @@ function renderPatientReadings() {
 const gauss = (p, m, w, a) => a * Math.exp(-0.5 * ((p - m) / w) ** 2);
 // Time-domain beat scheduling keeps QRS widths independent of screen frame rate.
 // Time-domain beat scheduling keeps QRS widths independent of screen frame rate.
+const PACER_MAX_OUTPUT = 140;
 const pacing = {
   running: false, mode: 'Demand', rate: 70, output: 0, next: Infinity,
   lastCapture: -Infinity, lastSensed: -Infinity, capture: null,
@@ -3979,10 +3980,15 @@ function drawWaveform(id, color, seconds) {
     }
     ctx.strokeStyle = '#e4f4ff';
     ctx.beginPath();
-    for (const {time} of pacingPulses) {
+    const baseline = yFor(0);
+    const fullSpikeHeight = Math.max(0, baseline - Math.max(16, yFor(1.35)));
+    for (const { time, output } of pacingPulses) {
       if (!visible(time)) continue;
-      ctx.moveTo(xFor(time), yFor(0));
-      ctx.lineTo(xFor(time), Math.max(16, yFor(1.35)));
+      // Scale this simulated marker by the output when the pulse was delivered.
+      const height = fullSpikeHeight * (0.12 + 0.88 * output / PACER_MAX_OUTPUT);
+      const x = xFor(time);
+      ctx.moveTo(x, baseline);
+      ctx.lineTo(x, baseline - height);
     }
     ctx.stroke();
   }
@@ -6648,7 +6654,7 @@ function paceEventText({ action, rate, output, mode }) {
   if (action === 'stop') return 'Simulated pacing stopped';
   if (!['start', 'capture', 'loss'].includes(action) || !['Demand', 'Fixed'].includes(mode) ||
       !Number.isInteger(rate) || rate < 30 || rate > 180 ||
-      !Number.isInteger(output) || output < 0 || output > 140) return '';
+      !Number.isInteger(output) || output < 0 || output > PACER_MAX_OUTPUT) return '';
   const label = { start: 'pacing started', capture: 'electrical capture', loss: 'loss of electrical capture' };
   return 'Simulated ' + label[action] + ' · ' + mode + ' · ' + rate + ' bpm · ' + output + ' mA';
 }
@@ -6755,7 +6761,7 @@ function advancePacing(to) {
   const recovery = pacing.mode === 'Demand' && patientState.hr > 0
     ? Math.min(3, Math.max(0.35, 60 / patientState.hr - 0.01))
     : 0.35;
-  pacingPulses.push({ time, captured, refractoryUntil: time + recovery });
+  pacingPulses.push({ time, output: pacing.output, captured, refractoryUntil: time + recovery });
   if (captured) pacing.lastCapture = time;
   if (captured !== pacing.capture && (captured || pacing.capture === true)) {
     logPacing(captured ? 'capture' : 'loss');
@@ -6918,7 +6924,7 @@ pacerRate.onchange = pacerOutput.onchange = pacerMode.onchange = () => {
 };
 pacerRate.oninput = pacerOutput.oninput = setPacerControls;
 function changePacerOutput(delta) {
-  pacerOutput.value = Math.min(140, Math.max(0, pacing.output + delta));
+  pacerOutput.value = Math.min(PACER_MAX_OUTPUT, Math.max(0, pacing.output + delta));
   setPacerControls();
   updateDefibControls();
 }
