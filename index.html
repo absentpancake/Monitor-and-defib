@@ -1352,6 +1352,81 @@ body.chart-focus.tabletop-layout #instructorChart {
 .tabletop-layout #patientPane .tile b {
   font-size: clamp(18px, 4vw, 30px);
 }
+/* Fit both waveforms and all readings above the portrait instructor pane. */
+body.portrait-split-layout {
+  --monitor-pane-height: min(66dvh, max(54dvh, 350px));
+  --instructor-pane-top: var(--monitor-pane-height);
+  --instructor-pane-height: calc(100dvh - var(--monitor-pane-height));
+}
+body.chart-focus.portrait-split-layout #patientPane {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-rows: auto repeat(2, minmax(52px, 1fr)) auto auto;
+  grid-template-areas:
+    "status status status status"
+    "ecg ecg ecg heart"
+    "cap cap cap cap"
+    "pressure oxygen resp temp"
+    "pressure oxygen etco2 temp";
+  gap: 6px;
+  padding: 8px;
+}
+.portrait-split-layout #patientPane .monitor,
+.portrait-split-layout #patientPane .tiles {
+  display: contents;
+}
+.portrait-split-layout #patientPane .status {
+  grid-area: status;
+  margin: 0;
+}
+.portrait-split-layout #ecgTrace { grid-area: ecg; }
+.portrait-split-layout #alarmHR { grid-area: heart; }
+.portrait-split-layout #capnographyTrace { grid-area: cap; }
+.portrait-split-layout #alarmBP { grid-area: pressure; }
+.portrait-split-layout #alarmSpO2 { grid-area: oxygen; }
+.portrait-split-layout #alarmRR { grid-area: resp; }
+.portrait-split-layout #alarmCO2 { grid-area: etco2; }
+.portrait-split-layout #alarmTemp { grid-area: temp; }
+
+.portrait-split-layout #patientPane .trace {
+  height: auto;
+  min-height: 0;
+}
+.portrait-split-layout #patientPane .reading,
+.portrait-split-layout #patientPane .tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: clamp(10px, 2.8vw, 14px);
+  padding: 4px 6px;
+}
+.portrait-split-layout #patientPane .unit {
+  font-size: inherit;
+}
+.portrait-split-layout #patientPane .tile b,
+.portrait-split-layout #alarmCO2 .number {
+  font-size: clamp(16px, 4.5vw, 26px);
+  line-height: 1.1;
+}
+.portrait-split-layout #alarmCO2 {
+  justify-content: flex-start;
+}
+.portrait-split-layout #patientPane #alarmBP {
+  padding-bottom: 10px;
+}
+.portrait-split-layout #patientPane .nibp-controls {
+  margin-top: 4px;
+  gap: 3px;
+}
+.portrait-split-layout #patientPane .nibp-controls button {
+  min-height: 36px;
+  max-width: 100%;
+  padding: 3px 6px;
+  font-size: inherit;
+}
+.portrait-split-layout #patientPane #nibpCountdown,
+.portrait-split-layout #patientPane #nibpStatus {
+  font-size: inherit;
+}
     </style></head
   ><body class="setup-mode student-view">
     <section id="startup" class="startup"
@@ -1499,21 +1574,21 @@ body.chart-focus.tabletop-layout #instructorChart {
         </div>
         <p id="defibStatus" role="status">Start or resume the scenario to use defib controls.</p>
       </details>
-      <div id="patientPane">
+      <div id="patientPane" role="region" aria-label="Patient monitor readings">
         <div class="status"
           ><span id="state">Live simulation</span
           ><span id="alarm" role="status">Readings outside training limits</span
           ><span id="clock"></span
         ></div>
         <section class="monitor" aria-label="Patient monitor">
-          <div class="trace green"
+          <div class="trace green" id="ecgTrace"
             ><label><span>ECG · LEAD II</span><span>6 s</span></label
             ><canvas id="ecg" aria-label="Animated simulated ECG"></canvas></div
           ><div class="reading green" id="alarmHR"
             ><span>HR <span class="unit">bpm</span></span
             ><b class="number" id="hrOut"></b><span class="unit">ECG rate</span></div
           >
-          <div class="trace yellow"
+          <div class="trace yellow" id="capnographyTrace"
             ><label><span>CAPNOGRAPHY</span><span>0–80 mmHg · 15 s</span></label
             ><canvas id="co2" aria-label="Animated simulated capnography"></canvas></div
           ><div class="reading yellow" id="alarmCO2"
@@ -1557,6 +1632,7 @@ body.chart-focus.tabletop-layout #instructorChart {
               <option value="auto">Auto</option>
               <option value="standard">Standard</option>
               <option value="tabletop">Tabletop</option>
+              <option value="portrait-split">Portrait Split</option>
             </select>
           </label>
           <button type="button" id="openAssessment">PCC assessment</button>
@@ -5267,11 +5343,14 @@ const stackedScreen = window.matchMedia(
 );
 function updateInstructorLayout() {
   const layout = getElement('instructorLayout').value;
-  const tabletop = layout === 'tabletop' || (layout === 'auto' && stackedScreen.matches);
+  const portraitSplit = layout === 'portrait-split';
+  const split = portraitSplit || layout === 'tabletop' || (layout === 'auto' && stackedScreen.matches);
+  const chartOpen = document.body.classList.contains('chart-focus');
   document.body.classList.toggle(
     'tabletop-layout',
-    tabletop && document.body.classList.contains('chart-focus'),
+    split && chartOpen,
   );
+  document.body.classList.toggle('portrait-split-layout', portraitSplit && chartOpen);
   requestAnimationFrame(drawFlowsheet);
 }
 getElement('instructorLayout').addEventListener('change', updateInstructorLayout);
